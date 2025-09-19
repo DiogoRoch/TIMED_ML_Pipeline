@@ -3,6 +3,7 @@ numpy
 
 seaborn
 matplotlib
+plotly
 
 optuna
 scikit-learn
@@ -14,6 +15,6 @@ shap
 joblib
 
 streamlit
+watchdog
 psutil
 keyboard
-plotly
