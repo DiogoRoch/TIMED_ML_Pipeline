@@ -1,0 +1,234 @@
+# File that contains utility functions for the regression task
+    # Getshap function
+    # Results formatting function
+    # Results exporting to csv function
+
+import json
+import os
+import time
+import shap
+import pandas as pd
+from pycaret.regression import RegressionExperiment
+from sklearn.pipeline import Pipeline
+
+
+def performances_dict_to_df(performances):
+    """
+    Converts a dictionary of model performances into a pandas DataFrame.
+
+    Parameters:
+    -----------
+    performances (dict): Dictionary of model performances returned by get_model_performances.
+
+    Returns:
+    --------
+    pd.DataFrame: DataFrame with a single row for each model, containing metrics as columns.
+    """
+    
+    rows = []
+    for model_name, metrics in performances.items():
+        row = {'model_name': model_name}
+        for metric, stats in metrics.items():
+            row[f'{metric}_train_mean'] = stats['train_mean']
+            row[f'{metric}_train_std'] = stats['train_std']
+            row[f'{metric}_val_mean'] = stats['val_mean']
+            row[f'{metric}_val_std'] = stats['val_std']
+        rows.append(row)
+    
+    df = pd.DataFrame(rows)
+    return df
+
+
+def get_model_performances(exp: RegressionExperiment , models: list):
+    """
+    Takes a regression experiment from PyCaret and a list of models and runs
+    cross-validation over multiple metrics. Then returns a dictionary containing
+    for each tested model: the mean and std of the cross-validation.
+
+    Parameters
+    ----------
+    exp (RegressionExperiment): Experiment from PyCaret
+    models (list): List of model estimators to train and evaluate
+
+    Returns: Dictionary of performances for train/val sets for all models
+        model_name (e.g., names of the estimators)
+            metric (e.g, MAE, MSE, R2, RMSE, RMSLE, MAPE, ...)
+                train_mean (mean of the cross-validation on the train sets)
+                train_std (standard deviation of the cv on the train sets)
+                val_mean (mean of the cv on the validation sets)
+                val_std (standard deviation of the cv on the validation sets)
+    """
+
+    performances = {}
+    for model in models:
+        model_name = type(model).__name__ if not isinstance(model, str) else model
+        performances[model_name] = {}
+        current_model = exp.create_model(model, return_train_score=True, verbose=False)
+        current_results = exp.pull()
+        current_train = current_results.loc['CV-Train']
+        current_val = current_results.loc['CV-Val']
+        for metric in current_results.columns:
+            performances[model_name][metric] = {}
+            performances[model_name][metric]['train_mean'] = current_train.loc['Mean'][metric]
+            performances[model_name][metric]['train_std'] = current_train.loc['Std'][metric]
+            performances[model_name][metric]['val_mean'] = current_val.loc['Mean'][metric]
+            performances[model_name][metric]['val_std'] = current_val.loc['Std'][metric]
+
+    return performances
+
+
+def generate_dynamic_hidden_layers(trial, max_layers=10, max_units_per_layer=1024):
+    """
+    Generate dynamic hidden layer configurations for MLP.
+    Args:
+        trial: Optuna trial object.
+        max_layers: Maximum number of layers.
+        max_units_per_layer: Maximum number of units in each layer.
+    Returns:
+        Tuple representing the layer sizes.
+    """
+    # Decide the number of layers
+    n_layers = trial.suggest_int('NN__n_layers', 1, max_layers)
+    
+    # Generate layer sizes
+    layers = []
+    for i in range(n_layers):
+        units = trial.suggest_int(f'NN__units_layer_{i+1}', 32, max_units_per_layer, step=32)
+        layers.append(units)
+    
+    return tuple(layers)
+
+
+def get_shap_values(model_name, pipe, X_test):
+
+    # Check if pipe is a pipeline or a single model
+    if isinstance(pipe, Pipeline):
+        model = pipe[model_name]
+    else:
+        model = pipe
+
+    if model_name in ["RF", "ET", "XGB", "LGB"]:
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X_test)
+        return shap_values
+    
+    elif model_name == "LR":
+        explainer = shap.LinearExplainer(model, X_test)
+        shap_values = explainer.shap_values(X_test)
+        return shap_values
+    
+    else:
+        raise ValueError(f"Model {model_name} not recognized.")
+    
+
+def plot_shap_values(shap_values, X_test, bar=False):
+
+    if bar:
+        shap.summary_plot(shap_values, X_test, plot_type="bar")
+    else:
+        shap.summary_plot(shap_values, X_test)
+
+
+def results_to_series(results, exp_counter):
+    
+    results_copy = results.copy()
+
+    # Create model_id (model_name + "_Exp" + str(exp_counter) + _score + _iteration)
+    model_id = f"{results_copy['model_name']}_Exp{exp_counter}_{results_copy['score']}_{results_copy['iteration']}"
+    # Add the model_id to the results_copy dictionary
+    results_copy = {"model_id": model_id, **results_copy}
+
+    # Pop the best_params column to re-insert it later as a JSON string
+    best_params = results_copy.pop('best_params')
+
+    series = pd.Series(results_copy)
+    series['best_params'] = json.dumps(best_params)
+
+    return series, model_id
+
+
+def format_results(results):
+    
+    # Make a copy of the results dataframe
+    results_copy = results.copy()
+
+    # Convert the json strings back to dictionaries
+    results_copy['best_params'] = results_copy['best_params'].apply(json.loads)
+
+    return results_copy
+
+
+def create_experiment_folders(models_folder, results_folder):
+    """
+    Creates the models and results folders if they do not exist.
+    Also returns the number of existing files in the results folder.
+    """
+    
+    # Create the results folder if it does not exist
+    if not os.path.exists(results_folder):
+        os.makedirs(results_folder)
+        print(f"Created directory: {results_folder}")
+    
+    # Create the models folder if it does not exist
+    if not os.path.exists(models_folder):
+        os.makedirs(models_folder)
+        print(f"Created directory: {models_folder}")
+    
+    # Get the number of existing results files
+    results_list = os.listdir(results_folder)
+    exp_counter = len(results_list) + 1
+
+    # Create an experiment folder for the current experiment in models
+    models_exp_folder = os.path.join(models_folder, f"Exp{exp_counter}")
+    if not os.path.exists(models_exp_folder):
+        os.makedirs(models_exp_folder)
+        print(f"Created directory: {models_exp_folder}")
+
+    return exp_counter, models_exp_folder
+
+
+def export_results(results, results_folder, exp_counter):
+    """Exports the results DataFrame to a CSV file in the specified results folder."""
+
+    # Logs start of export
+    print("\n" + "="*90)
+    print("Exporting results to a CSV file...")
+
+    # Start timer for export process
+    start_time = time.time()
+
+    # Create the file name and path
+    file_name = f'results_Exp{exp_counter}.csv'
+    file_path = os.path.join(results_folder, file_name)
+
+    # Export the results to a CSV file
+    results.to_csv(file_path, index=False)
+    
+    # End timer for export process
+    end_time = time.time()
+    elapsed_time = format_elapsed_time(start_time, end_time)
+
+    # Log successful export details
+    print("="*90)
+    print(f"{'File Path':<20}: {file_path}")
+    print(f"{'Export Status':<20}: Success 🎉")
+    print(f"{'Export Time':<20}: {elapsed_time}")
+    print("=" * 90)
+
+
+def format_elapsed_time(start_time, end_time):
+    """Formats the elapsed time between the start and end times in seconds."""
+
+    elapsed_time = end_time - start_time
+    
+    # Calculate hours, minutes, and seconds
+    hours = int(elapsed_time // 3600)
+    minutes = int((elapsed_time % 3600) // 60)
+    seconds = elapsed_time % 60
+
+    if hours > 0:
+        return f"{hours}h {minutes}m {seconds:.2f}s"
+    elif minutes > 0:
+        return f"{minutes}m {seconds:.2f}s"
+    else:
+        return f"{seconds:.2f}s"
