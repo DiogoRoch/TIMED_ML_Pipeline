@@ -20,7 +20,7 @@ results_dir = os.path.join(current_dir, 'results')
 data_dir = os.path.join(current_dir, 'data')
 
 # Load dataset
-data_path = os.path.join(data_dir, 'WP1_Switzerland_processed.csv')
+data_path = os.path.join(data_dir, 'Demo_Data.csv')
 df = pd.read_csv(data_path)
 if "df" not in st.session_state:
     st.session_state.df = df
