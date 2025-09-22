@@ -1,3 +1,10 @@
+### TODOS
+# - [x] Reorganize the way that output is stored (logs, results, models, figures) (output folder with a subfolder per experiment)
+# - [x] Add possibility to select what to output (model scores, feature importances, shap summary plot, shap scatter plot)
+# - [x] Implement feature importance output
+# - [x] Implement shap summary output
+# - [x] Implement shap scatter output
+
 import os
 import sys
 import time
@@ -16,7 +23,6 @@ st.set_page_config(layout="wide")
 
 # Define directories
 current_dir = os.path.dirname(__file__)
-results_dir = os.path.join(current_dir, 'results')
 data_dir = os.path.join(current_dir, 'data')
 
 # Load dataset
@@ -31,10 +37,13 @@ metrics = ['mse', 'mae', 'r2']
 feat_scores = ['f_regression', 'mutual_info_regression']
 
 # Load files
+"""
 try:
     results_files = os.listdir(results_dir)
 except FileNotFoundError:
     results_files = []
+"""
+
 try:
     data_files = os.listdir(data_dir)
 except FileNotFoundError:
@@ -44,7 +53,7 @@ except FileNotFoundError:
 st.title("CSV Viewer & ML Analysis")
 
 # Create radio buttons in the sidebar for tab selection
-tab_selection = st.sidebar.radio("Select a page", ["Analysis", "CSV Viewer", "Results Plotting"])
+tab_selection = st.sidebar.radio("Select a page", ["Analysis", "CSV Viewer", "Model Evaluation"])
 
 # Button to close the Streamlit app
 exit_app = st.sidebar.button("Shut Down")
@@ -92,8 +101,7 @@ elif tab_selection == "Analysis":
                 st.session_state.df = df_data2
 
         with st.expander("1. PATHS"):
-            out_models_data_folder = st.text_input("Out Models Data Folder", "models")
-            out_results_data_folder = st.text_input("Out Results Data Folder", "results")
+            output_dir = st.text_input("Output folder", "output")
 
         with st.expander("2. FEATURES"):
             target = st.multiselect("Target", list(st.session_state.df.columns) + ['DASS_Sum'])
@@ -121,35 +129,41 @@ elif tab_selection == "Analysis":
 
         if st.session_state.show_config:
             config_message = {
-                "selected_data": selected_data2,
-                "out_models_data_folder": out_models_data_folder,
-                "out_results_data_folder": out_results_data_folder,
-                "target": target,
-                "target_transform": target_transform,
-                "features_to_drop": features_to_drop,
+                "selected_data":        selected_data2,
+                "output_dir":           output_dir,
+                "target":               target,
+                "target_transform":     target_transform,
+                "features_to_drop":     features_to_drop,
                 "categorical_features": categorical_features,
-                "nb_features": nb_features,
-                "feature_scoring": feature_scoring,
-                "nb_iterations": nb_iterations,
-                "regressors": regressors,
-                "metrics": metrics,
-                "kfold": kfold,
-                "n_trials": n_trials,
-                "n_jobs": n_jobs,
-                "save_models": save_models
+                "nb_features":          nb_features,
+                "feature_scoring":      feature_scoring,
+                "nb_iterations":        nb_iterations,
+                "regressors":           regressors,
+                "metrics":              metrics,
+                "kfold":                kfold,
+                "n_trials":             n_trials,
+                "n_jobs":               n_jobs,
+                "save_models":          save_models
             }
             st.write("### Current Configuration")
             st.json(config_message)
 
     if st.button("Start Analysis"):
+        
         if not selected_data2:
             st.error("Please select a dataset to start the analysis.")
+        
         elif not target:
             st.error("Please select at least one target.")
+        
         else:
-            # Ensure logs folder exists
-            logs_dir = os.path.join(current_dir, 'logs')
-            os.makedirs(logs_dir, exist_ok=True)
+            # Ensure output directory exists
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            
+            # Get the number of existing experiments
+            n_exps = len(os.listdir(output_dir))
+            current_exp = n_exps + 1  # Since we are about to create a new one
 
             # Load the dataframe once
             file_path = os.path.join(data_dir, selected_data2)
@@ -166,22 +180,21 @@ elif tab_selection == "Analysis":
                 # Wrapper to call run_analysis for this single target
                 def run_for_target():
                     run_analysis(
-                        data=df_data2,
-                        results_folder=out_results_data_folder,
-                        models_folder=out_models_data_folder,
-                        target=tgt,
-                        target_transform=target_transform,
-                        features_to_drop=features_to_drop,
-                        categorical_features=categorical_features,
-                        n_features=nb_features,
-                        feature_scoring=feature_scoring,
-                        models=regressors,
-                        n_iter=nb_iterations,
-                        k=kfold,
-                        opti_scoring=metrics,
-                        n_trials=n_trials,
-                        n_jobs=n_jobs,
-                        save_models=save_models
+                        data                  = df_data2,
+                        output_dir            = output_dir,
+                        target                = tgt,
+                        target_transform      = target_transform,
+                        features_to_drop      = features_to_drop,
+                        categorical_features  = categorical_features,
+                        n_features            = nb_features,
+                        feature_scoring       = feature_scoring,
+                        models                = regressors,
+                        n_iter                = nb_iterations,
+                        k                     = kfold,
+                        opti_scoring          = metrics,
+                        n_trials              = n_trials,
+                        n_jobs                = n_jobs,
+                        save_models           = save_models
                     )
 
                 # start and monitor the thread
@@ -195,17 +208,14 @@ elif tab_selection == "Analysis":
                 final_output = output_buffer.getvalue()
                 log_display.text(final_output)
                 sys.stdout = sys.__stdout__
-
-                # Get the number of existing results files
-                results_list = os.listdir(results_dir)
-                exp_counter = len(results_list) # Without +1 because the log file is created after the analysis and so the results list is already incremented
-                # Write out the per-experiment log
-                log_name = f"analysis_log_Exp{exp_counter}.txt"
+                
+                # Write out the per-experiment log inside the experiment folder
+                log_name = f"analysis_log_Exp{current_exp}.txt"
                 log_path = os.path.join(logs_dir, log_name)
                 with open(log_path, "w", encoding="utf-8") as lf:
                     lf.write(final_output)
 
-                st.success(f"✅ Saved log for experiment #{exp_counter} at: `{log_path}`")
+                st.success(f"✅ Saved log for experiment #{current_exp} at: `{log_path}`")
 
 # Model Evaluation Page (choose a model joblib file, choose a dataset -> plot residuals, plot shap values)
 elif tab_selection == "Model Evaluation":

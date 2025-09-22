@@ -158,33 +158,33 @@ def format_results(results):
     return results_copy
 
 
-def create_experiment_folders(models_folder, results_folder):
+def create_experiment_folders(output_dir, current_exp):
     """
-    Creates the models and results folders if they do not exist.
-    Also returns the number of existing files in the results folder.
+    Creates the output folder if it does not yet exist and the experiment folder
     """
-    
-    # Create the results folder if it does not exist
-    if not os.path.exists(results_folder):
-        os.makedirs(results_folder)
-        print(f"Created directory: {results_folder}")
-    
-    # Create the models folder if it does not exist
-    if not os.path.exists(models_folder):
-        os.makedirs(models_folder)
-        print(f"Created directory: {models_folder}")
-    
-    # Get the number of existing results files
-    results_list = os.listdir(results_folder)
-    exp_counter = len(results_list) + 1
 
-    # Create an experiment folder for the current experiment in models
-    models_exp_folder = os.path.join(models_folder, f"Exp{exp_counter}")
-    if not os.path.exists(models_exp_folder):
-        os.makedirs(models_exp_folder)
-        print(f"Created directory: {models_exp_folder}")
+    # Create the output folder if it does not exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"Created directory: {output_dir}")
+    
+    # Create the experiment folder if it does not exist
+    experiment_path = os.path.join(output_dir, f"Exp{current_exp}")
+    if not os.path.exists(experiment_path):
+        os.makedirs(experiment_path)
+        print(f"Created directory: {experiment_path}")
+    
+    # Create the models folder inside current experiment folder if it does not exist
+    models_path = os.path.join(experiment_path, "models")
+    if not os.path.exists(models_path):
+        os.makedirs(models_path)
+        print(f"Created directory: {models_path}")
 
-    return exp_counter, models_exp_folder
+    # Create the plots folder inside current experiment folder if it does not exist
+    plots_path = os.path.join(experiment_path, "plots")
+    if not os.path.exists(plots_path):
+        os.makedirs(plots_path)
+        print(f"Created directory: {plots_path}")
 
 
 def export_results(results, results_folder, exp_counter):
