@@ -11,7 +11,7 @@ from datetime import datetime
 from sklearn.model_selection import train_test_split
 
 
-def run_analysis(data, output_dir, current_exp, target, target_transform, features_to_drop, categorical_features, n_features, feature_scoring, models, n_iter, k, opti_scoring, n_trials, n_jobs=4, save_models=False):
+def run_analysis(data, current_exp, experiment_path, models_path, plots_path, target, target_transform, features_to_drop, categorical_features, n_features, feature_scoring, models, n_iter, k, opti_scoring, n_trials, n_jobs=4, save_models=False):
     
     # Start timer for the analysis
     start_time = time.time()
@@ -25,7 +25,10 @@ def run_analysis(data, output_dir, current_exp, target, target_transform, featur
     print("\n" + "="*90)
     print("🔧 CONFIGURATION PARAMETERS")
     print("="*90)
-    print(f"📂 Output Directory       : {output_dir}")
+    print(f"🧪 Experiment Number      : {current_exp}")
+    print(f"📂 Experiment Path        : {experiment_path}")
+    print(f"📂 Models Path            : {models_path}")
+    print(f"📂 Plots Path             : {plots_path}")
     print(f"🎯 Target Variable        : {target}")
     print(f"🔄 Target Transform       : {target_transform}")
     print(f"🗑️ Features to Drop       : {features_to_drop}")
@@ -40,9 +43,6 @@ def run_analysis(data, output_dir, current_exp, target, target_transform, featur
     print(f"💾 Save Models            : {save_models}")
     print("="*90)
 
-    # Creating experiment folders
-    experiment_path, models_path, plots_path = create_experiment_folders(output_dir=output_dir, current_exp=current_exp)
-    print(f"Experiment Number: {current_exp}")
     print("="*90)
 
     # Data loading and processing

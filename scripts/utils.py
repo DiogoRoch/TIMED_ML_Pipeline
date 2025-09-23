@@ -3,11 +3,11 @@
     # Results formatting function
     # Results exporting to csv function
 
-import json
-import os
-import time
+import os, json, ast, time
 import shap
 import pandas as pd
+import numpy as np
+from datetime import timedelta
 from pycaret.regression import RegressionExperiment
 from sklearn.pipeline import Pipeline
 
@@ -234,3 +234,68 @@ def format_elapsed_time(start_time, end_time):
         return f"{minutes}m {seconds:.2f}s"
     else:
         return f"{seconds:.2f}s"
+    
+
+def get_experiments(output_dir):
+    """Lists all experiment folders in the output directory."""
+
+    if not os.path.exists(output_dir):
+        return []
+
+    exp_folders = [f for f in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, f)) and f.startswith("Exp")]
+    exp_folders.sort(key=lambda x: int(x.replace("Exp", "")))  # Sort by experiment number
+
+    return exp_folders
+
+
+#### Dashboard helpers
+def parse_params(cell):
+    if pd.isna(cell):
+        return {}
+    # Try strict JSON first, then python-literal fallback
+    try:
+        return json.loads(cell)
+    except Exception:
+        try:
+            return ast.literal_eval(str(cell))
+        except Exception:
+            return {"raw": str(cell)}
+
+def sec_to_hms(seconds):
+    try:
+        s = float(seconds)
+    except Exception:
+        return "—"
+    td = timedelta(seconds=s)
+    # keep hours:minutes:seconds only
+    total_seconds = int(td.total_seconds())
+    h = total_seconds // 3600
+    m = (total_seconds % 3600) // 60
+    s = total_seconds % 60
+    return f"{h:d}:{m:02d}:{s:02d}"
+
+def rank(df, metric, higher_is_better):
+    if metric not in df.columns:
+        return None, df
+    ascending = not higher_is_better
+    ranked = df.sort_values(metric, ascending=ascending).reset_index(drop=True)
+    ranked.insert(0, "rank", np.arange(1, len(ranked) + 1))
+    return ranked.iloc[0].to_dict(), ranked
+
+def metric_info(key):
+    # returns (column_name, higher_is_better, label)
+    mapping = {
+        "R² (test_R2)": ("test_R2", True, "R²"),
+        "MAE (test_MAE)": ("test_MAE", False, "MAE"),
+        "MSE (test_MSE)": ("test_MSE", False, "MSE"),
+    }
+    return mapping[key]
+
+# helper for safe formatting numbers in text
+def safe_fmt(v):
+    try:
+        if v is None or (isinstance(v, float) and np.isnan(v)):
+            return "—"
+        return f"{float(v):,.4f}"
+    except Exception:
+        return str(v) if v is not None else "—"

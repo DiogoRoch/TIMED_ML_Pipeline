@@ -161,11 +161,11 @@ def data_processing(data: pd.DataFrame, target: str, features_to_drop: list=None
         else:
             print(f'  ✅ Dropped missing target values. New Shape: {step1_shape}')
     
-    print('- Dropping the features that cause target leakage:')
-    leakage_features = task_leakage[target]
-    processed_data = processed_data.drop(leakage_features, axis=1)
-    step2_shape = processed_data.shape
-    print(f'  ✅ Dropped {leakage_features}. New Shape: {step2_shape}')
+    #print('- Dropping the features that cause target leakage:')
+    #leakage_features = task_leakage[target]
+    #processed_data = processed_data.drop(leakage_features, axis=1)
+    #step2_shape = processed_data.shape
+    #print(f'  ✅ Dropped {leakage_features}. New Shape: {step2_shape}')
 
     ### Drop features not considered for the task
     print(f'- Dropping feature(s) not considered for the task:')
