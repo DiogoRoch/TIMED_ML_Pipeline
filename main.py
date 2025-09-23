@@ -76,11 +76,22 @@ if tab_selection == "CSV Viewer":
             st.dataframe(df_data1)
 
     with st.expander('Results CSV Files'):
+
+        # If the output folder exists, and there are experiment folders inside, make a list with the csv file from each experiment
+        output_dir = os.path.join(current_dir, 'output')
+        if os.path.exists(output_dir):
+            exp_folders = [f for f in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, f)) and f.startswith("Exp")]
+            results_files = []
+            for exp in exp_folders:
+                exp_path = os.path.join(output_dir, exp)
+                for file in os.listdir(exp_path):
+                    if file.endswith('.csv'):
+                        results_files.append(os.path.join(exp, file))
+
         selected_result = st.selectbox("Results", [""] + results_files, label_visibility="collapsed")
 
         if selected_result:
-            file_path = os.path.join(results_dir, selected_result)
-            df_result = pd.read_csv(file_path)
+            df_result = pd.read_csv(selected_result)
             st.dataframe(df_result)
 
 # Analysis Page
@@ -210,8 +221,8 @@ elif tab_selection == "Analysis":
                 sys.stdout = sys.__stdout__
                 
                 # Write out the per-experiment log inside the experiment folder
-                log_name = f"analysis_log_Exp{current_exp}.txt"
-                log_path = os.path.join(logs_dir, log_name)
+                log_name = f"Log_Exp{current_exp}.txt"
+                log_path = os.path.join(output_dir, f"Exp{current_exp}", log_name)
                 with open(log_path, "w", encoding="utf-8") as lf:
                     lf.write(final_output)
 

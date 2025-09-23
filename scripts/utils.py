@@ -186,8 +186,10 @@ def create_experiment_folders(output_dir, current_exp):
         os.makedirs(plots_path)
         print(f"Created directory: {plots_path}")
 
+    return experiment_path, models_path, plots_path
 
-def export_results(results, results_folder, exp_counter):
+
+def export_results(results, current_exp, experiment_path):
     """Exports the results DataFrame to a CSV file in the specified results folder."""
 
     # Logs start of export
@@ -198,8 +200,8 @@ def export_results(results, results_folder, exp_counter):
     start_time = time.time()
 
     # Create the file name and path
-    file_name = f'results_Exp{exp_counter}.csv'
-    file_path = os.path.join(results_folder, file_name)
+    file_name = f'results_Exp{current_exp}.csv'
+    file_path = os.path.join(experiment_path, file_name)
 
     # Export the results to a CSV file
     results.to_csv(file_path, index=False)

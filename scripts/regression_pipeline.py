@@ -32,7 +32,7 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
 
-def regression(models, X, y, target, exp_counter, models_exp_folder, n_iter=3, k=5, scoring=['mse'], target_transform="none", n_trials=50, n_jobs=4, save_models=False):
+def regression(models, X, y, target, current_exp, models_exp_folder, n_iter=3, k=5, scoring=['mse'], target_transform="none", n_trials=50, n_jobs=4, save_models=False):
 
     # Start Logs Printing
     # Dataset statistics
@@ -85,7 +85,7 @@ def regression(models, X, y, target, exp_counter, models_exp_folder, n_iter=3, k
                 )
                 
                 # Save the results to a dataframe
-                i_series, model_id = results_to_series(i_results, exp_counter)
+                i_series, model_id = results_to_series(i_results, current_exp)
                 results_df = pd.concat([results_df, pd.DataFrame([i_series])], ignore_index=True)
                 
                 # Save the model

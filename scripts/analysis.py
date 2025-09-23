@@ -11,7 +11,7 @@ from datetime import datetime
 from sklearn.model_selection import train_test_split
 
 
-def run_analysis(data, results_folder, models_folder, target, target_transform, features_to_drop, categorical_features, n_features, feature_scoring, models, n_iter, k, opti_scoring, n_trials, n_jobs=4, save_models=False):
+def run_analysis(data, output_dir, current_exp, target, target_transform, features_to_drop, categorical_features, n_features, feature_scoring, models, n_iter, k, opti_scoring, n_trials, n_jobs=4, save_models=False):
     
     # Start timer for the analysis
     start_time = time.time()
@@ -25,8 +25,7 @@ def run_analysis(data, results_folder, models_folder, target, target_transform, 
     print("\n" + "="*90)
     print("🔧 CONFIGURATION PARAMETERS")
     print("="*90)
-    print(f"📂 Models Folder          : {models_folder}")
-    print(f"📂 Results Folder         : {results_folder}")
+    print(f"📂 Output Directory       : {output_dir}")
     print(f"🎯 Target Variable        : {target}")
     print(f"🔄 Target Transform       : {target_transform}")
     print(f"🗑️ Features to Drop       : {features_to_drop}")
@@ -41,9 +40,9 @@ def run_analysis(data, results_folder, models_folder, target, target_transform, 
     print(f"💾 Save Models            : {save_models}")
     print("="*90)
 
-    # Getting the experiment number
-    exp_counter, models_exp_folder = create_experiment_folders(models_folder, results_folder)
-    print(f"Experiment Number: {exp_counter}")
+    # Creating experiment folders
+    experiment_path, models_path, plots_path = create_experiment_folders(output_dir=output_dir, current_exp=current_exp)
+    print(f"Experiment Number: {current_exp}")
     print("="*90)
 
     # Data loading and processing
@@ -61,7 +60,7 @@ def run_analysis(data, results_folder, models_folder, target, target_transform, 
     # Regression
     regression_results = regression(
         models=models, X=X, y=y, target=target, target_transform=target_transform,
-        exp_counter=exp_counter, models_exp_folder=models_exp_folder,
+        current_exp=current_exp, models_exp_folder=models_path,
         n_iter=n_iter, k=k, scoring=opti_scoring, n_trials=n_trials, n_jobs=n_jobs, save_models=save_models
     )
 
@@ -69,7 +68,7 @@ def run_analysis(data, results_folder, models_folder, target, target_transform, 
     formatted_results = format_results(regression_results)
 
     # Export results
-    export_results(results=formatted_results, results_folder=results_folder, exp_counter=exp_counter)
+    export_results(results=formatted_results, current_exp=current_exp, experiment_path=experiment_path)
 
     # End timer for the analysis
     end_time = time.time()
