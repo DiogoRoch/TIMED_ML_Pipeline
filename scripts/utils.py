@@ -285,9 +285,9 @@ def rank(df, metric, higher_is_better):
 def metric_info(key):
     # returns (column_name, higher_is_better, label)
     mapping = {
-        "R² (test_R2)": ("test_R2", True, "R²"),
-        "MAE (test_MAE)": ("test_MAE", False, "MAE"),
-        "MSE (test_MSE)": ("test_MSE", False, "MSE"),
+        "R²": ("test_R2", True, "R²"),
+        "MAE": ("test_MAE", False, "MAE"),
+        "MSE": ("test_MSE", False, "MSE"),
     }
     return mapping[key]
 

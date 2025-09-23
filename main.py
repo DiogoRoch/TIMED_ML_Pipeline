@@ -209,9 +209,10 @@ elif tab_selection == "Analysis":
 # Dashboard Page
 elif tab_selection == "Dashboard":
 
-    st.header("Experiments Overview")
+    st.header("Experiments Dashboard")
 
     # ---------- Helpers ----------
+    # Defined here for the caching to work properly
     @st.cache_data(ttl=60, show_spinner=False)
     def load_results_csv(csv_path):
         return pd.read_csv(csv_path)
@@ -280,7 +281,7 @@ elif tab_selection == "Dashboard":
         # Metric selector
         metric_choice = st.radio(
             "Primary metric",
-            options=["R² (test_R2)", "MAE (test_MAE)", "MSE (test_MSE)"],
+            options=["R²", "MAE", "MSE"],
             horizontal=True,
         )
         metric_col, higher_is_better, metric_label = metric_info(metric_choice)
@@ -295,10 +296,14 @@ elif tab_selection == "Dashboard":
             with c1:
                 st.metric("Models evaluated", len(df_results))
             with c2:
-                # show mean metric
+                # Display the average and std of the chosen metric (test)
                 try:
                     mean_val = np.nanmean(df_results[metric_col].astype(float))
-                    st.metric(f"Avg {metric_label}", f"{mean_val:,.4f}")
+                    std_val = np.nanstd(df_results[metric_col].astype(float))
+                    if metric_choice == "R²":
+                        st.metric(f"Avg {metric_label} (test)", f"{mean_val:,.4f} ± {std_val:.4f}")
+                    else:
+                        st.metric(f"Avg {metric_label} (test)", f"{mean_val:,.4f}")
                 except Exception:
                     st.metric(f"Avg {metric_label}", "—")
             with c3:
@@ -317,47 +322,105 @@ elif tab_selection == "Dashboard":
             with st.expander("🏆 Best model details", expanded=True):
                 left, right = st.columns([1.2, 1])
                 with left:
-                    st.write(
-                        f"**Model**: `{best_row.get('model_name', '—')}`  |  "
-                        f"**ID**: `{best_row.get('model_id', '—')}`"
+                    # Compact, scannable model info (still just text)
+                    st.markdown(
+                        f"""
+            **Model:** `{best_row.get('model_name', '—')}`  
+            **ID:** `{best_row.get('model_id', '—')}`  
+
+            **Target:** `{best_row.get('target', '—')}`  
+            **Transform:** `{best_row.get('target_transform', '—')}`  
+            **Trials:** `{best_row.get('n_trials', '—')}`
+                        """
                     )
-                    st.write(
-                        f"**Target**: `{best_row.get('target', '—')}`  |  "
-                        f"**Transform**: `{best_row.get('target_transform', '—')}`  |  "
-                        f"**Trials**: `{best_row.get('n_trials', '—')}`"
+
+                    # Metrics as a readable markdown table (no new components)
+                    tr2  = safe_fmt(best_row.get("train_R2"))
+                    tmae = safe_fmt(best_row.get("train_MAE"))
+                    tmse = safe_fmt(best_row.get("train_MSE"))
+
+                    vr2  = safe_fmt(best_row.get("best_R2"))
+                    vmae = safe_fmt(best_row.get("best_MAE"))
+                    vmse = safe_fmt(best_row.get("best_MSE"))
+
+                    sr2  = safe_fmt(best_row.get("test_R2"))
+                    smae = safe_fmt(best_row.get("test_MAE"))
+                    smse = safe_fmt(best_row.get("test_MSE"))
+
+                    st.markdown("**📊 Performance (by split)**")
+                    st.markdown(
+                        f"""
+            | Split | R² | MAE | MSE |
+            |:----:|:--:|:---:|:---:|
+            | **Train** | **{tr2}** | **{tmae}** | **{tmse}** |
+            | **Validation** | **{vr2}** | **{vmae}** | **{vmse}** |
+            | **Test** | **{sr2}** | **{smae}** | **{smse}** |
+                        """
                     )
-                    st.write(
-                        f"**Train**: R² {safe_fmt(best_row.get('train_R2'))}, "
-                        f"MAE {safe_fmt(best_row.get('train_MAE'))}, "
-                        f"MSE {safe_fmt(best_row.get('train_MSE'))}"
-                    )
-                    st.write(
-                        f"**Test**:  R² {safe_fmt(best_row.get('test_R2'))}, "
-                        f"MAE {safe_fmt(best_row.get('test_MAE'))}, "
-                        f"MSE {safe_fmt(best_row.get('test_MSE'))}"
-                    )
+                    st.caption("R² ↑ higher is better · MAE/MSE ↓ lower is better")
                 with right:
-                    # Show best_params nicely
+                    # Display the best hyperparameters as JSON
+                    st.write("**Best Hyperparameters**")
                     params = parse_params(best_row.get("best_params", {}))
                     st.json(params)
 
-            # Quick chart of top models by primary metric
-            top_n = st.slider("Show top N in chart", min_value=3, max_value=min(30, len(ranked)), value=min(10, len(ranked)))
-            to_plot = ranked.head(top_n)[["model_name", metric_col]].copy()
-            to_plot.rename(columns={"model_name": "Model", metric_col: metric_label}, inplace=True)
+            # Summary chart of model performances on the chosen metric with plotly
+            df = ranked.copy()
 
-            direction = "descending" if higher_is_better else "ascending"
-            chart = (
-                alt.Chart(to_plot)
-                .mark_bar()
-                .encode(
-                    x=alt.X(f"{metric_label}:Q", sort=direction),
-                    y=alt.Y("Model:N", sort="-x"),
-                    tooltip=[alt.Tooltip("Model:N"), alt.Tooltip(f"{metric_label}:Q", format=".4f")],
-                )
-                .properties(height=28 * len(to_plot), width="container")
+            # precompute medians for overlay
+            medians = df.groupby("model_name")[metric_col].median().sort_values(ascending=not higher_is_better)
+            family_order = medians.index.tolist()
+
+            # build figure: one box+jitter per family, colored consistently; overlay medians as diamonds
+            fig = go.Figure()
+            palette = pc.qualitative.Plotly
+
+            for i, fam in enumerate(family_order):
+                fam_df = df[df["model_name"] == fam]
+                fig.add_trace(go.Box(
+                    x=[fam] * len(fam_df),
+                    y=fam_df[metric_col],
+                    name=fam,
+                    boxpoints="all",          # show individual iterations
+                    jitter=0.35,              # spread the points
+                    pointpos=0,               # center the points on the box
+                    marker=dict(
+                        color=palette[i % len(palette)],
+                        size=6,
+                        line=dict(width=0)
+                    ),
+                    line=dict(width=1),
+                    hovertext=fam_df["model_name"],
+                    hovertemplate="<b>%{hovertext}</b><br>" + metric_label + ": %{y:.4f}<extra></extra>",
+                    showlegend=False,
+                ))
+
+            # median overlay
+            fig.add_trace(go.Scatter(
+                x=family_order,
+                y=medians.values,
+                mode="markers+text",
+                name="Median",
+                marker_symbol="diamond",
+                marker_size=10,
+                marker_line_width=0,
+                text=[f"{v:,.4f}" for v in medians.values],
+                textposition="top center",
+                hovertemplate="<b>%{x}</b><br>Median " + metric_label + ": %{y:.4f}<extra></extra>",
+            ))
+
+            fig.update_layout(
+                title=f"Model type performances by Test {metric_label} (iterations shown as jittered points)",
+                xaxis_title="Model type",
+                yaxis_title=metric_label,
+                xaxis_tickangle=-30,
+                xaxis=dict(categoryorder="array", categoryarray=family_order),
+                height=max(420, 120 + 60 * len(family_order)),
+                margin=dict(l=40, r=20, t=70, b=80),
             )
-            st.altair_chart(chart, use_container_width=True)
+
+            st.plotly_chart(fig, use_container_width=True, theme="streamlit")
+
 
     # ======================== RESULTS TABLE ========================
     with t_results:
@@ -399,7 +462,7 @@ elif tab_selection == "Dashboard":
             if "optimization_time" in view_df.columns:
                 view_df["optimization_time"] = view_df["optimization_time"].apply(sec_to_hms)
 
-            st.dataframe(view_df, use_container_width=True, hide_index=True)
+            st.dataframe(view_df, width="stretch", hide_index=True)
 
             # Download filtered CSV
             csv_bytes = view_df.to_csv(index=False).encode("utf-8")
@@ -421,7 +484,7 @@ elif tab_selection == "Dashboard":
                 cols = st.columns(3)
                 for i, img_path in enumerate(sorted(images)):
                     with cols[i % 3]:
-                        st.image(img_path, caption=os.path.basename(img_path), use_container_width=True)
+                        st.image(img_path, caption=os.path.basename(img_path), width="stretch")
             else:
                 st.info("No plot images found yet in the `plots/` folder.")
         else:
@@ -429,21 +492,46 @@ elif tab_selection == "Dashboard":
 
     # ======================== MODELS ========================
     with t_models:
-        st.subheader("Models")
+        st.subheader("Model Evaluation & Interpretation")
         if os.path.isdir(models_dir):
-            files = sorted(glob.glob(os.path.join(models_dir, "*.joblib")))
-            if not files:
+            model_files = sorted(glob.glob(os.path.join(models_dir, "*.joblib")))
+            if not model_files:
                 st.info("No .joblib models saved.")
             else:
-                sizes = [os.path.getsize(f) for f in files]
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.metric("Saved models", len(files))
-                with c2:
-                    total_mb = sum(sizes) / (1024**2)
-                    st.metric("Disk usage", f"{total_mb:.2f} MB")
-                with st.expander("Show file list"):
-                    st.write("\n".join(os.path.basename(f) for f in files))
+                # Selectbox to pick a model file
+                selected_model_file = st.selectbox(
+                    "Select a model file",
+                    options=[""] + model_files,
+                    format_func=lambda x: os.path.basename(x),
+                    index=0,
+                )
+
+                # Load dataset for evaluation
+                selected_data_interp = st.selectbox(
+                    "Select dataset for evaluation",
+                    options=[""] + data_files,
+                    index=0,
+                    help="Dataset used for generating evaluation plots.",
+                )
+                
+                # Model evaluation and interpretation
+                # - Residuals plot
+                # - Shap summary plot
+                # - Shap scatter plot for a selected feature
+                if selected_model_file and selected_data_interp:
+                    from joblib import load
+                    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+                    import shap
+                    import matplotlib.pyplot as plt
+                    from sklearn.model_selection import train_test_split
+
+                    # Load model
+                    model = load(selected_model_file)
+                    st.write(f"Loaded model: `{os.path.basename(selected_model_file)}`")
+                    # TODO - Need to find a way to process data the same way as during the training (reuse processing function or implement pipelines)
+                    # TODO - Need to get the target variable that was used during training
+                    # TODO - Make residuals plot and shap plots
+
         else:
             st.info("`models/` folder not found for this experiment.")
 
