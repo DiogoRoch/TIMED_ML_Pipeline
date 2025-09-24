@@ -11,7 +11,7 @@ from datetime import datetime
 from sklearn.model_selection import train_test_split
 
 
-def run_analysis(data_path, data, current_exp, experiment_path, models_path, plots_path, target, target_transform, features_to_drop, categorical_features, n_features, feature_scoring, models, n_iter, k, opti_scoring, n_trials, n_jobs=4, save_models=False):
+def run_analysis(data_path, data, random_state, current_exp, experiment_path, models_path, target, target_transform, features_to_drop, categorical_features, n_features, feature_scoring, models, n_iter, k, opti_scoring, n_trials, n_jobs=4, save_models=False):
     
     # Start timer for the analysis
     start_time = time.time()
@@ -28,7 +28,7 @@ def run_analysis(data_path, data, current_exp, experiment_path, models_path, plo
     print(f"🧪 Experiment Number      : {current_exp}")
     print(f"📂 Experiment Path        : {experiment_path}")
     print(f"📂 Models Path            : {models_path}")
-    print(f"📂 Plots Path             : {plots_path}")
+    print(f"🔢 Random State           : {random_state}")
     print(f"🎯 Target Variable        : {target}")
     print(f"🔄 Target Transform       : {target_transform}")
     print(f"🗑️ Features to Drop       : {features_to_drop}")
@@ -59,7 +59,7 @@ def run_analysis(data_path, data, current_exp, experiment_path, models_path, plo
     
     # Regression
     regression_results = regression(
-        models=models, X=X, y=y, target=target, target_transform=target_transform,
+        models=models, X=X, y=y, random_state=random_state, target=target, target_transform=target_transform,
         current_exp=current_exp, models_exp_folder=models_path,
         n_iter=n_iter, k=k, scoring=opti_scoring, n_trials=n_trials, n_jobs=n_jobs, save_models=save_models
     )
@@ -70,7 +70,7 @@ def run_analysis(data_path, data, current_exp, experiment_path, models_path, plo
     # Export results and metadata
     export_results(results=formatted_results, current_exp=current_exp, experiment_path=experiment_path)
     store_metadata(
-        exp_path=experiment_path, current_exp=current_exp, data_path=data_path, target=target, target_transform=target_transform,
+        exp_path=experiment_path, current_exp=current_exp, data_path=data_path, random_state=random_state, target=target, target_transform=target_transform,
         features_to_drop=features_to_drop, categorical_features=categorical_features, n_features=n_features, kfold=k
     )
 

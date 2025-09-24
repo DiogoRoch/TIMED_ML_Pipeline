@@ -14,6 +14,8 @@ import streamlit as st
 import psutil
 import keyboard
 import threading
+from contextlib import redirect_stdout
+
 import plotly.graph_objects as go
 import plotly.colors as pc
 
@@ -30,7 +32,8 @@ data_dir = os.path.join(current_dir, 'data')
 output_dir = os.path.join(current_dir, 'output')
 
 # Initizalize session state for dataframe
-df = None
+demo_path = os.path.join(data_dir, 'Demo_Data.csv')
+df = pd.read_csv(demo_path)
 if "df" not in st.session_state:
     st.session_state.df = df
 
@@ -57,7 +60,6 @@ tab_selection = st.sidebar.radio("Select a page", ["Dashboard", "Analysis"])
 exit_app = st.sidebar.button("Shut Down")
 if exit_app:
     time.sleep(1)
-    keyboard.press_and_release('ctrl+w')
     pid = os.getpid()
     p = psutil.Process(pid)
     p.terminate()
@@ -76,6 +78,7 @@ elif tab_selection == "Analysis":
     with col1:
         with st.expander("1. DATASET"):
             selected_data = st.selectbox("Data", [""] + data_files, label_visibility="collapsed")
+            selected_random_state = st.number_input("Random State", min_value=0, value=42)
             if selected_data:
                 data_path = os.path.join(data_dir, selected_data)
                 df_data = pd.read_csv(data_path)
@@ -83,7 +86,7 @@ elif tab_selection == "Analysis":
 
                 # Show a preview of the dataframe
                 with st.expander("Preview Dataset", expanded=False):
-                    st.dataframe(st.session_state.df.head(), use_container_width=True)
+                    st.dataframe(st.session_state.df.head(), width="stretch")
 
         with st.expander("2. FEATURES"):
             target = st.multiselect("Target", list(st.session_state.df.columns) + ['DASS_Sum'])
@@ -113,6 +116,7 @@ elif tab_selection == "Analysis":
             config_message = {
                 "data_path":            data_path,
                 "selected_data":        selected_data,
+                "random_state":         selected_random_state,
                 "output_dir":           output_dir,
                 "target":               target,
                 "target_transform":     target_transform,
@@ -145,52 +149,54 @@ elif tab_selection == "Analysis":
                 os.makedirs(output_dir)
             
             # Get the number of existing experiments
-            n_exps = len([f for f in os.listdir(output_dir) if f.startswith('Exp')])
-            current_exp = n_exps + 1  # Since we are about to create a new one
-            # Convert current exp to string with leading zeros
-            current_exp = int(str(current_exp).zfill(3))
-
-            # Create the required folders for the experiment
-            experiment_path, models_path, plots_path = create_experiment_folders(output_dir=output_dir, current_exp=current_exp)
+            start_exp_num = len([f for f in os.listdir(output_dir) if f.startswith('Exp')])
+            current_exp = int(str(start_exp_num).zfill(3)) # Add leading zeros
 
             # Load the dataframe once
             data_path = os.path.join(data_dir, selected_data)
             df_data = pd.read_csv(data_path)
 
             for tgt in target:
+
+                # Increment experiment number
+                current_exp += 1
+
+                # Create experiment folder
+                experiment_path, models_path = create_experiment_folders(output_dir=output_dir, current_exp=current_exp)
+
                 st.subheader(f"🚀 Running analysis for target: **{tgt}**")
 
                 # Prepare a fresh log buffer
                 output_buffer = StringIO()
-                sys.stdout = output_buffer
                 log_display = st.empty()
 
                 # Wrapper to call run_analysis for this single target
                 def run_for_target():
-                    run_analysis(
-                        data_path             = data_path,
-                        data                  = df_data,
-                        current_exp           = current_exp,
-                        experiment_path       = experiment_path,
-                        models_path           = models_path,
-                        plots_path            = plots_path,
-                        target                = tgt,
-                        target_transform      = target_transform,
-                        features_to_drop      = features_to_drop,
-                        categorical_features  = categorical_features,
-                        n_features            = nb_features,
-                        feature_scoring       = feature_scoring,
-                        models                = regressors,
-                        n_iter                = nb_iterations,
-                        k                     = kfold,
-                        opti_scoring          = metrics,
-                        n_trials              = n_trials,
-                        n_jobs                = n_jobs,
-                        save_models           = save_models
-                    )
+                    with redirect_stdout(output_buffer):
+                        run_analysis(
+                            data_path             = data_path,
+                            data                  = df_data,
+                            random_state          = selected_random_state,
+                            current_exp           = current_exp,
+                            experiment_path       = experiment_path,
+                            models_path           = models_path,
+                            target                = tgt,
+                            target_transform      = target_transform,
+                            features_to_drop      = features_to_drop,
+                            categorical_features  = categorical_features,
+                            n_features            = nb_features,
+                            feature_scoring       = feature_scoring,
+                            models                = regressors,
+                            n_iter                = nb_iterations,
+                            k                     = kfold,
+                            opti_scoring          = metrics,
+                            n_trials              = n_trials,
+                            n_jobs                = n_jobs,
+                            save_models           = save_models
+                        )
 
                 # start and monitor the thread
-                analysis_thread = threading.Thread(target=run_for_target)
+                analysis_thread = threading.Thread(target=run_for_target, daemon=True)
                 analysis_thread.start()
                 while analysis_thread.is_alive():
                     log_display.text(output_buffer.getvalue())
@@ -199,7 +205,7 @@ elif tab_selection == "Analysis":
                 # Final flush of logs
                 final_output = output_buffer.getvalue()
                 log_display.text(final_output)
-                sys.stdout = sys.__stdout__
+                output_buffer.close()
                 
                 # Write out the per-experiment log inside the experiment folder
                 log_name = f"Log_Exp{current_exp}.txt"
@@ -305,9 +311,9 @@ elif tab_selection == "Dashboard":
                     mean_val = np.nanmean(df_results[metric_col].astype(float))
                     std_val = np.nanstd(df_results[metric_col].astype(float))
                     if metric_choice == "R²":
-                        st.metric(f"Avg {metric_label} (test)", f"{mean_val:,.4f} ± {std_val:.4f}")
+                        st.metric(f"Avg Test {metric_label}", f"{mean_val:,.4f} ± {std_val:.4f}")
                     else:
-                        st.metric(f"Avg {metric_label} (test)", f"{mean_val:,.4f}")
+                        st.metric(f"Avg Test {metric_label}", f"{mean_val:,.4f}")
                 except Exception:
                     st.metric(f"Avg {metric_label}", "—")
             with c3:
@@ -320,7 +326,7 @@ elif tab_selection == "Dashboard":
             with c4:
                 best_val = best_row.get(metric_col, None)
                 best_str = f"{best_val:,.4f}" if isinstance(best_val, (int, float, np.floating)) else str(best_val)
-                st.metric(f"Best {metric_label}", best_str)
+                st.metric(f"Validation {metric_label}", best_str)
 
             # Best model card
             with st.expander("🏆 Best model details", expanded=True):
@@ -423,7 +429,7 @@ elif tab_selection == "Dashboard":
                 margin=dict(l=40, r=20, t=70, b=80),
             )
 
-            st.plotly_chart(fig, use_container_width=True, theme="streamlit")
+            st.plotly_chart(fig, width="stretch", theme="streamlit")
 
 
     # ======================== RESULTS TABLE ========================
@@ -514,12 +520,13 @@ elif tab_selection == "Dashboard":
                     with open(metadata_file, "r", encoding="utf-8") as mf:
                         metadata = json.load(mf)
                     
-                    data_path = metadata.get("data_path", None)
-                    target_var = metadata.get("target", None)                
-                    features_to_drop = metadata.get("features_to_drop", [])
-                    categorical_features = metadata.get("categorical_features", [])
-                    n_features = metadata.get("n_features", 0)
-                    feature_scoring = metadata.get("feature_scoring", "f_regression")
+                    data_path =             metadata.get("data_path", None)
+                    random_state =          metadata.get("random_state", 42)
+                    target_var =            metadata.get("target", None)                
+                    features_to_drop =      metadata.get("features_to_drop", [])
+                    categorical_features =  metadata.get("categorical_features", [])
+                    n_features =            metadata.get("n_features", 0)
+                    feature_scoring =       metadata.get("feature_scoring", "f_regression")
                     
                     # Load dataset
                     data_interp = pd.read_csv(data_path)
@@ -539,7 +546,7 @@ elif tab_selection == "Dashboard":
                         X = X[selected_features]
 
                     # Split data into train and test for evaluation
-                    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+                    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=random_state)
 
                     # Load model
                     model = load(selected_model_file)

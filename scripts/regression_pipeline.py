@@ -32,7 +32,7 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 
 
-def regression(models, X, y, target, current_exp, models_exp_folder, n_iter=3, k=5, scoring=['mse'], target_transform="none", n_trials=50, n_jobs=4, save_models=False):
+def regression(models, X, y, random_state, target, current_exp, models_exp_folder, n_iter=3, k=5, scoring=['mse'], target_transform="none", n_trials=50, n_jobs=4, save_models=False):
 
     # Start Logs Printing
     # Dataset statistics
@@ -51,7 +51,7 @@ def regression(models, X, y, target, current_exp, models_exp_folder, n_iter=3, k
     print("="*90 + "\n")
 
     # Splitting data
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=random_state)
 
     # Initializing dataframes
     results_df = pd.DataFrame()

@@ -180,13 +180,7 @@ def create_experiment_folders(output_dir, current_exp):
         os.makedirs(models_path)
         print(f"Created directory: {models_path}")
 
-    # Create the plots folder inside current experiment folder if it does not exist
-    plots_path = os.path.join(experiment_path, "plots")
-    if not os.path.exists(plots_path):
-        os.makedirs(plots_path)
-        print(f"Created directory: {plots_path}")
-
-    return experiment_path, models_path, plots_path
+    return experiment_path, models_path
 
 
 def export_results(results, current_exp, experiment_path):
@@ -301,7 +295,7 @@ def safe_fmt(v):
         return str(v) if v is not None else "—"
 
 
-def store_metadata(exp_path, current_exp, data_path, target, target_transform, features_to_drop, categorical_features, n_features, kfold):
+def store_metadata(exp_path, current_exp, data_path, random_state, target, target_transform, features_to_drop, categorical_features, n_features, kfold):
     """
     Store the metadata for the current experiment in a JSON file.
     The aim of the metadata is to keep track of most parameters and data used so that we can easily evaluate and interpret the models later on.
@@ -320,15 +314,16 @@ def store_metadata(exp_path, current_exp, data_path, target, target_transform, f
     """
     
     metadata = {
-        "experiment_id": f"experiment_{current_exp}",
-        "date": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "data_path": data_path,
-        "target": target,
-        "target_transform": target_transform,
-        "features_to_drop": features_to_drop,
+        "experiment_id":        f"experiment_{current_exp}",
+        "date":                 time.strftime("%Y-%m-%d %H:%M:%S"),
+        "data_path":            data_path,
+        "random_state":         random_state,
+        "target":               target,
+        "target_transform":     target_transform,
+        "features_to_drop":     features_to_drop,
         "categorical_features": categorical_features,
-        "n_features": n_features,
-        "kfold": kfold
+        "n_features":           n_features,
+        "kfold":                kfold
     }
     metadata_path = os.path.join(exp_path, f"metadata_Exp{current_exp}.json")
     with open(metadata_path, "w", encoding="utf-8") as f:
