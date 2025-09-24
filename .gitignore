@@ -208,5 +208,6 @@ __marimo__/
 
 
 # Additional directories and files
-data
+/data/**
+!data/Demo_Data.csv
 output
