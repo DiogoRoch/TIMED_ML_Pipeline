@@ -299,3 +299,38 @@ def safe_fmt(v):
         return f"{float(v):,.4f}"
     except Exception:
         return str(v) if v is not None else "—"
+
+
+def store_metadata(exp_path, current_exp, data_path, target, target_transform, features_to_drop, categorical_features, n_features, kfold):
+    """
+    Store the metadata for the current experiment in a JSON file.
+    The aim of the metadata is to keep track of most parameters and data used so that we can easily evaluate and interpret the models later on.
+
+    Metadata to store:
+    - Experiment ID.
+    - Date of the experiment.
+    - Location of the dataset used.
+    - Target variable.
+    - Target transformation.
+    - Features removed.
+    - Categorical features.
+    - Feature selection method.
+    - Number of features selected.
+    - Kfold value.
+    """
+    
+    metadata = {
+        "experiment_id": f"experiment_{current_exp}",
+        "date": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "data_path": data_path,
+        "target": target,
+        "target_transform": target_transform,
+        "features_to_drop": features_to_drop,
+        "categorical_features": categorical_features,
+        "n_features": n_features,
+        "kfold": kfold
+    }
+    metadata_path = os.path.join(exp_path, f"metadata_Exp{current_exp}.json")
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=4)
+    print(f"✅ Saved metadata for experiment #{current_exp} at: `{metadata_path}`")

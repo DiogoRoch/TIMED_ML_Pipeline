@@ -19,6 +19,8 @@ import plotly.colors as pc
 
 from scripts.analysis import run_analysis
 from scripts.utils import create_experiment_folders, get_experiments, metric_info, rank, sec_to_hms, safe_fmt, parse_params
+from scripts.data_processing import data_processing
+
 
 st.set_page_config(layout="wide")
 
@@ -27,9 +29,8 @@ current_dir = os.path.dirname(__file__)
 data_dir = os.path.join(current_dir, 'data')
 output_dir = os.path.join(current_dir, 'output')
 
-# Load dataset
-data_path = os.path.join(data_dir, 'Demo_Data.csv')
-df = pd.read_csv(data_path)
+# Initizalize session state for dataframe
+df = None
 if "df" not in st.session_state:
     st.session_state.df = df
 
@@ -74,11 +75,11 @@ elif tab_selection == "Analysis":
 
     with col1:
         with st.expander("1. DATASET"):
-            selected_data2 = st.selectbox("Data", [""] + data_files, label_visibility="collapsed")
-            if selected_data2:
-                file_path = os.path.join(data_dir, selected_data2)
-                df_data2 = pd.read_csv(file_path)
-                st.session_state.df = df_data2
+            selected_data = st.selectbox("Data", [""] + data_files, label_visibility="collapsed")
+            if selected_data:
+                data_path = os.path.join(data_dir, selected_data)
+                df_data = pd.read_csv(data_path)
+                st.session_state.df = df_data
 
                 # Show a preview of the dataframe
                 with st.expander("Preview Dataset", expanded=False):
@@ -91,7 +92,7 @@ elif tab_selection == "Analysis":
             categorical_features = st.multiselect("Categorical Features", st.session_state.df.columns)
 
         with st.expander("3. FEATURE SELECTION"):
-            nb_features = st.number_input("Number of Features", min_value=0, value=10)
+            nb_features = st.number_input("Number of Features", min_value=0, value=0)
             feature_scoring = st.selectbox("Feature Selection Scoring", feat_scores, placeholder="Choose a metric")
 
         with st.expander("4. REGRESSION"):
@@ -101,7 +102,7 @@ elif tab_selection == "Analysis":
             kfold = st.number_input("K-Fold", min_value=2, value=5)
             n_trials = st.number_input("Number of Trials", min_value=10, value=50)
             n_jobs = st.number_input("Number of Jobs", min_value=1, value=4)
-            save_models = st.checkbox("Save Models")
+            save_models = st.checkbox("Save Models", value=True)
 
     with col2:
 
@@ -110,7 +111,8 @@ elif tab_selection == "Analysis":
 
         if st.session_state.show_config:
             config_message = {
-                "selected_data":        selected_data2,
+                "data_path":            data_path,
+                "selected_data":        selected_data,
                 "output_dir":           output_dir,
                 "target":               target,
                 "target_transform":     target_transform,
@@ -131,7 +133,7 @@ elif tab_selection == "Analysis":
 
     if st.button("Start Analysis"):
         
-        if not selected_data2:
+        if not selected_data:
             st.error("Please select a dataset to start the analysis.")
         
         elif not target:
@@ -143,15 +145,17 @@ elif tab_selection == "Analysis":
                 os.makedirs(output_dir)
             
             # Get the number of existing experiments
-            n_exps = len(os.listdir(output_dir))
+            n_exps = len([f for f in os.listdir(output_dir) if f.startswith('Exp')])
             current_exp = n_exps + 1  # Since we are about to create a new one
+            # Convert current exp to string with leading zeros
+            current_exp = int(str(current_exp).zfill(3))
 
             # Create the required folders for the experiment
             experiment_path, models_path, plots_path = create_experiment_folders(output_dir=output_dir, current_exp=current_exp)
 
             # Load the dataframe once
-            file_path = os.path.join(data_dir, selected_data2)
-            df_data2 = pd.read_csv(file_path)
+            data_path = os.path.join(data_dir, selected_data)
+            df_data = pd.read_csv(data_path)
 
             for tgt in target:
                 st.subheader(f"🚀 Running analysis for target: **{tgt}**")
@@ -164,7 +168,8 @@ elif tab_selection == "Analysis":
                 # Wrapper to call run_analysis for this single target
                 def run_for_target():
                     run_analysis(
-                        data                  = df_data2,
+                        data_path             = data_path,
+                        data                  = df_data,
                         current_exp           = current_exp,
                         experiment_path       = experiment_path,
                         models_path           = models_path,
@@ -256,7 +261,6 @@ elif tab_selection == "Dashboard":
         st.warning(f"Missing results CSV: `{os.path.basename(results_file)}`")
     if not os.path.exists(log_file):
         st.warning(f"Missing log file: `{os.path.basename(log_file)}`")
-
     if not (os.path.exists(results_file) and os.path.exists(log_file)):
         st.stop()
 
@@ -270,8 +274,8 @@ elif tab_selection == "Dashboard":
             df_results[col] = np.nan
 
     # ---------- Tabs ----------
-    t_summary, t_results, t_plots, t_models, t_logs = st.tabs(
-        ["📊 Summary", "📋 Results Table", "🖼️ Plots", "🧠 Models", "📜 Logs"]
+    t_summary, t_results, t_models, t_logs = st.tabs(
+        ["📊 Summary", "📋 Results Table", "🧠 Models", "📜 Logs"]
     )
 
     # ======================== SUMMARY ========================
@@ -350,11 +354,11 @@ elif tab_selection == "Dashboard":
                     st.markdown("**📊 Performance (by split)**")
                     st.markdown(
                         f"""
-            | Split | R² | MAE | MSE |
-            |:----:|:--:|:---:|:---:|
-            | **Train** | **{tr2}** | **{tmae}** | **{tmse}** |
-            | **Validation** | **{vr2}** | **{vmae}** | **{vmse}** |
-            | **Test** | **{sr2}** | **{smae}** | **{smse}** |
+                        | Split | R² | MAE | MSE |
+                        |:----:|:--:|:---:|:---:|
+                        | **Train** | **{tr2}** | **{tmae}** | **{tmse}** |
+                        | **Validation** | **{vr2}** | **{vmae}** | **{vmse}** |
+                        | **Test** | **{sr2}** | **{smae}** | **{smse}** |
                         """
                     )
                     st.caption("R² ↑ higher is better · MAE/MSE ↓ lower is better")
@@ -473,23 +477,6 @@ elif tab_selection == "Dashboard":
                 mime="text/csv",
             )
 
-    # ======================== PLOTS ========================
-    with t_plots:
-        st.subheader("Plots")
-        if os.path.isdir(plots_dir):
-            images = []
-            for ext in ("*.png","*.jpg","*.jpeg","*.svg"):
-                images.extend(glob.glob(os.path.join(plots_dir, ext)))
-            if images:
-                cols = st.columns(3)
-                for i, img_path in enumerate(sorted(images)):
-                    with cols[i % 3]:
-                        st.image(img_path, caption=os.path.basename(img_path), width="stretch")
-            else:
-                st.info("No plot images found yet in the `plots/` folder.")
-        else:
-            st.info("`plots/` folder not found for this experiment.")
-
     # ======================== MODELS ========================
     with t_models:
         st.subheader("Model Evaluation & Interpretation")
@@ -506,31 +493,107 @@ elif tab_selection == "Dashboard":
                     index=0,
                 )
 
-                # Load dataset for evaluation
-                selected_data_interp = st.selectbox(
-                    "Select dataset for evaluation",
-                    options=[""] + data_files,
-                    index=0,
-                    help="Dataset used for generating evaluation plots.",
-                )
+                # Find model type by splitting filename per underscore, e.g., LGB_Exp1_mse_1.joblib
+                model_type = selected_model_file.split("/")[-1].split("_")[0]
                 
                 # Model evaluation and interpretation
                 # - Residuals plot
                 # - Shap summary plot
                 # - Shap scatter plot for a selected feature
-                if selected_model_file and selected_data_interp:
+                if selected_model_file:
                     from joblib import load
-                    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
                     import shap
                     import matplotlib.pyplot as plt
                     from sklearn.model_selection import train_test_split
 
+                    # Load metadata from JSON file
+                    metadata_file = os.path.join(exp_path, f"metadata_{selected_exp}.json")
+                    if not os.path.exists(metadata_file):
+                        st.error(f"Metadata file not found: `{metadata_file}`")
+                        st.stop()
+                    with open(metadata_file, "r", encoding="utf-8") as mf:
+                        metadata = json.load(mf)
+                    
+                    data_path = metadata.get("data_path", None)
+                    target_var = metadata.get("target", None)                
+                    features_to_drop = metadata.get("features_to_drop", [])
+                    categorical_features = metadata.get("categorical_features", [])
+                    n_features = metadata.get("n_features", 0)
+                    feature_scoring = metadata.get("feature_scoring", "f_regression")
+                    
+                    # Load dataset
+                    data_interp = pd.read_csv(data_path)
+                    processed_data = data_processing(
+                        data=data_interp,
+                        target=target_var,
+                        features_to_drop=features_to_drop,
+                        categorical_features=categorical_features
+                    )
+                    X = processed_data.drop(columns=[target_var])
+                    y = processed_data[target_var]
+
+                    # Feature selection if applied during training
+                    if n_features != 0:
+                        from scripts.data_processing import feature_selection
+                        selected_features = feature_selection(X, y, n_features, score_func=feature_scoring)
+                        X = X[selected_features]
+
+                    # Split data into train and test for evaluation
+                    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
                     # Load model
                     model = load(selected_model_file)
                     st.write(f"Loaded model: `{os.path.basename(selected_model_file)}`")
-                    # TODO - Need to find a way to process data the same way as during the training (reuse processing function or implement pipelines)
-                    # TODO - Need to get the target variable that was used during training
-                    # TODO - Make residuals plot and shap plots
+
+                    # Compute SHAP values
+                    explainer = shap.TreeExplainer(model[model_type])
+                    shap_values = explainer(X_test)
+
+                    # Tabs for:
+                    # - Residuals plot
+                    # - Shap summary plot
+                    # - Shap scatter plot for a selected feature
+                    tab1, tab2, tab3 = st.tabs(["📈 Residuals Plot", "🔍 SHAP Summary Plot", "🔍 SHAP Scatter Plot"])
+
+                    # Model residuals plot
+                    with tab1:
+                        st.write("### Residuals Plot")
+                        y_pred = model.predict(X_test)
+                        residuals = y_test - y_pred
+                        
+                        fig_res, ax = plt.subplots()
+                        ax.scatter(y_pred, residuals, alpha=0.5)
+                        ax.axhline(0, color='red', linestyle='--')
+                        ax.set_xlabel("Predicted Values")
+                        ax.set_ylabel("Residuals")
+                        ax.set_title("Residuals vs Predicted Values")
+                        st.pyplot(fig_res, clear_figure=True)
+                        plt.close(fig_res)
+                    
+                    # Shap summary plot
+                    with tab2:
+                        st.write(f"### SHAP Summary Plot — Model type: **{model_type}**")
+
+                        fig_shap, ax = plt.subplots()
+                        shap.summary_plot(shap_values, X_test, show=False)
+                        st.pyplot(fig_shap, clear_figure=True)
+                        plt.close(fig_shap)
+                    
+                    # Shap scatter plot for a selected feature
+                    with tab3:
+                        selected_feature = st.selectbox(
+                            "Select a feature for SHAP scatter plot",
+                            options=[""] + list(X.columns),
+                            index=0,
+                        )
+                        if selected_feature:
+                            st.write(f"### SHAP Scatter Plot for feature: **{selected_feature}**")
+                            feature_loc = X_test.columns.get_loc(selected_feature)
+                            
+                            fig_scatter, ax = plt.subplots()
+                            shap.plots.scatter(shap_values[:, feature_loc], ax=ax, show=False)
+                            st.pyplot(fig_scatter, clear_figure=True)
+                            plt.close(fig_scatter)
 
         else:
             st.info("`models/` folder not found for this experiment.")

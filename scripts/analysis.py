@@ -1,6 +1,6 @@
 from scripts.data_processing import feature_selection, data_processing
 from scripts.regression_pipeline import regression
-from scripts.utils import export_results, format_results, format_elapsed_time, create_experiment_folders
+from scripts.utils import export_results, format_results, format_elapsed_time, store_metadata
 
 import time
 import pandas as pd
@@ -11,7 +11,7 @@ from datetime import datetime
 from sklearn.model_selection import train_test_split
 
 
-def run_analysis(data, current_exp, experiment_path, models_path, plots_path, target, target_transform, features_to_drop, categorical_features, n_features, feature_scoring, models, n_iter, k, opti_scoring, n_trials, n_jobs=4, save_models=False):
+def run_analysis(data_path, data, current_exp, experiment_path, models_path, plots_path, target, target_transform, features_to_drop, categorical_features, n_features, feature_scoring, models, n_iter, k, opti_scoring, n_trials, n_jobs=4, save_models=False):
     
     # Start timer for the analysis
     start_time = time.time()
@@ -67,8 +67,12 @@ def run_analysis(data, current_exp, experiment_path, models_path, plots_path, ta
     # Format results and convert to metrics
     formatted_results = format_results(regression_results)
 
-    # Export results
+    # Export results and metadata
     export_results(results=formatted_results, current_exp=current_exp, experiment_path=experiment_path)
+    store_metadata(
+        exp_path=experiment_path, current_exp=current_exp, data_path=data_path, target=target, target_transform=target_transform,
+        features_to_drop=features_to_drop, categorical_features=categorical_features, n_features=n_features, kfold=k
+    )
 
     # End timer for the analysis
     end_time = time.time()
