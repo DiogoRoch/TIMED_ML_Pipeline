@@ -84,7 +84,18 @@ def feature_selection(X, y, n_features, score_func='f_regression'):
     return selected_features
 
 
-def data_processing(data: pd.DataFrame, target: str, features_to_drop: list=None, categorical_features:list=None, single_frame: bool=True):
+import time
+import numpy as np
+import pandas as pd
+
+def data_processing(
+    data: pd.DataFrame,
+    target: str,
+    features_to_drop: list = None,
+    categorical_features: list = None,
+    single_frame: bool = True,
+    verbose: bool = True,
+):
     """
     Function that takes a dataset and a target and processes it:
      - Removes duplicate rows
@@ -105,159 +116,157 @@ def data_processing(data: pd.DataFrame, target: str, features_to_drop: list=None
      - features_to_drop (list): Features that should be dropped from the dataset
      - categorical_features (list): Features to be considered as categorical
      - single_frame (bool): Whether to return a single dataframe with the features and target
-        - If False, then the function returns 2 dataframes: X, y
+        - If False, the function returns 2 dataframes: X, y
+     - verbose (bool, default=True): If True, prints progress info; if False, prints nothing.
+
     Returns:
     --------
-     - processed_data (pd.DataFrame): The processed dataframe
+     - processed_data (pd.DataFrame): The processed dataframe, or (X, y) if single_frame=False
     """
 
+    # helper "conditional print"
+    def vprint(*args, **kwargs):
+        if verbose:
+            print(*args, **kwargs)
+
     # Start timing the entire process
-    print('\n' + '='*90)
-    print('🔄 Starting data processing...')
-    print('='*90)
+    vprint('\n' + '='*90)
+    vprint('🔄 Starting data processing...')
+    vprint('='*90)
     start_time = time.time()
 
     # Loading the dataset
     processed_data = data.copy(deep=True)
     original_shape = processed_data.shape
-    print(f'✅ Data loaded. Original Shape: {original_shape}')
-    print('='*90)
+    vprint(f'✅ Data loaded. Original Shape: {original_shape}')
+    vprint('='*90)
 
     # Replace infinite values with NaN
-    print('- Checking for missing values:')
-    print('  ➡️ Replacing infinite values with NaN.')
+    vprint('- Checking for missing values:')
+    vprint('  ➡️ Replacing infinite values with NaN.')
     processed_data = processed_data.replace([np.inf, -np.inf, '#NAME?'], np.nan)
+
     # Check percentage of missing values for each column
-    print('  ➡️ Showing columns with missing values:')
+    vprint('  ➡️ Showing columns with missing values:')
     missing_percentages = round(processed_data.isnull().mean() * 100, 2)
     for feature, missing in missing_percentages.items():
         if missing > 0:
-            print(f'\t-{feature}: {missing}%')
-    print('='*90)
+            vprint(f'\t-{feature}: {missing}%')
+    vprint('='*90)
 
     # Drop rows where the target is missing
-    print('- Dropping rows where the target is missing:')
+    vprint('- Dropping rows where the target is missing:')
     if target == 'DASS_Sum':
         # Get the DASS Columns
-        dass_columns = task_leakage[target]
+        dass_columns = task_leakage[target]  # assumes task_leakage is defined elsewhere
         # Drop rows with missing DASS values
         processed_data = data.dropna(subset=dass_columns)
         step1_shape = processed_data.shape
         if step1_shape == original_shape:
-            print(f'  ❌ No missing target values to drop. Shape: {step1_shape}')
+            vprint(f'  ❌ No missing target values to drop. Shape: {step1_shape}')
         else:
-            print(f'  ✅ Dropped missing target values. New Shape: {step1_shape}')
+            vprint(f'  ✅ Dropped missing target values. New Shape: {step1_shape}')
         # If the target is DASS_Sum, we need to sum the DASS columns and add the target
         if 'DASS_Sum' not in processed_data.columns:
-            print('- Adding the DASS_Sum target to the dataset:')
+            vprint('- Adding the DASS_Sum target to the dataset:')
             processed_data[target] = processed_data[dass_columns].sum(axis=1)
             step1_shape = processed_data.shape
-            print(f'  ✅ Added DASS_Sum. New Shape: {step1_shape}')
+            vprint(f'  ✅ Added DASS_Sum. New Shape: {step1_shape}')
     else:
         processed_data = processed_data.dropna(subset=[target])
         step1_shape = processed_data.shape
         if step1_shape == original_shape:
-            print(f'  ❌ No missing target values to drop. Shape: {step1_shape}')
+            vprint(f'  ❌ No missing target values to drop. Shape: {step1_shape}')
         else:
-            print(f'  ✅ Dropped missing target values. New Shape: {step1_shape}')
-    
-    #print('- Dropping the features that cause target leakage:')
-    #leakage_features = task_leakage[target]
-    #processed_data = processed_data.drop(leakage_features, axis=1)
-    #step2_shape = processed_data.shape
-    #print(f'  ✅ Dropped {leakage_features}. New Shape: {step2_shape}')
+            vprint(f'  ✅ Dropped missing target values. New Shape: {step1_shape}')
 
     ### Drop features not considered for the task
-    print(f'- Dropping feature(s) not considered for the task:')
+    vprint(f'- Dropping feature(s) not considered for the task:')
     if features_to_drop:
         processed_data = processed_data.drop(columns=features_to_drop)
         step3_shape = processed_data.shape
-        print(f'  ✅ Dropped {len(features_to_drop)} features. New shape: {step3_shape}')
+        vprint(f'  ✅ Dropped {len(features_to_drop)} features. New shape: {step3_shape}')
     else:
-        print('  ❌ No features to drop.')
+        vprint('  ❌ No features to drop.')
 
-    # Dropping the duplicated rows, need to do this after removing the Participantnumber, since that one can be different
-    # however if the rest of the features are duplicated they still give no additional information.
-    print('- Dropping duplicated rows:')
+    # Dropping duplicated rows
+    vprint('- Dropping duplicated rows:')
     n_duplicates = processed_data.duplicated().sum()
     if n_duplicates > 0:
         processed_data = processed_data.drop_duplicates()
         step4_shape = processed_data.shape
-        print(f'  ✅ Dropped {n_duplicates} duplicated rows. New shape: {step4_shape}')
+        vprint(f'  ✅ Dropped {n_duplicates} duplicated rows. New shape: {step4_shape}')
     else:
-        print('  ❌ No duplicated rows to drop.')
+        vprint('  ❌ No duplicated rows to drop.')
 
     ### Handle missing values
-    print('- Handling missing values:')
-    
-    # Drop features with only NaN values -> Not needed because also done by the 20% NaN check
-    #initial_columns = processed_data.shape[1]
-    #processed_data = processed_data.dropna(axis=1, how='all')
-    #dropped_columns = initial_columns - processed_data.shape[1]
-    #print(f'  ➡️ Dropped {dropped_columns} column(s) with only NaN values. New shape: {processed_data.shape}')
-    
+    vprint('- Handling missing values:')
+
     # Drop features with more than 20% NaN values
     na_features = processed_data.columns[processed_data.isna().mean() > 0.2]
     if len(na_features) > 0:
-        print(f'  ➡️ Dropping {len(na_features)} feature(s) with more than 20% NaN values.')
+        vprint(f'  ➡️ Dropping {len(na_features)} feature(s) with more than 20% NaN values.')
         processed_data = processed_data.drop(columns=na_features)
         step5_shape = processed_data.shape
-        print(f'  ✅ Dropped high NaN features. New shape: {step5_shape}')
+        vprint(f'  ✅ Dropped high NaN features. New shape: {step5_shape}')
     else:
-        print('  ➡️ No features have more than 20% NaN values.')
+        vprint('  ➡️ No features have more than 20% NaN values.')
 
     ### Drop columns with constant values
-    print('- Dropping columns with constant values:')
+    vprint('- Dropping columns with constant values:')
     initial_columns = processed_data.shape[1]
     processed_data = processed_data.loc[:, processed_data.apply(pd.Series.nunique) != 1]
     dropped_columns = initial_columns - processed_data.shape[1]
-    print(f'  ➡️ Dropped {dropped_columns} constant column(s). New shape: {processed_data.shape}')
+    vprint(f'  ➡️ Dropped {dropped_columns} constant column(s). New shape: {processed_data.shape}')
 
     # Replace NaN in numeric columns with the median (only if NaN exists)
     numeric_cols = processed_data.select_dtypes(include=['number']).columns
     numeric_cols_with_nan = processed_data[numeric_cols].columns[processed_data[numeric_cols].isna().any()]
     if len(numeric_cols_with_nan) > 0:
-        print(f'  ➡️ Replacing NaN in {len(numeric_cols_with_nan)} numeric column(s) with the median.')
-        processed_data[numeric_cols_with_nan] = processed_data[numeric_cols_with_nan].fillna(processed_data[numeric_cols_with_nan].median())
-        print(f'  ✅ Replaced NaN values in numeric columns.')
+        vprint(f'  ➡️ Replacing NaN in {len(numeric_cols_with_nan)} numeric column(s) with the median.')
+        processed_data[numeric_cols_with_nan] = processed_data[numeric_cols_with_nan].fillna(
+            processed_data[numeric_cols_with_nan].median()
+        )
+        vprint('  ✅ Replaced NaN values in numeric columns.')
     else:
-        print('  ➡️ No NaN values in numeric columns to replace.')
-
-    # If no categorical column is provided, check if there is any in the dataset
-    #if not categorical_features:
-    #    categorical_cols = processed_data.select_dtypes(include=['object', 'category']).columns
-    #    print(f'  ➡️ Automatically detected {len(categorical_cols)} categorical column(s) for one-hot encoding.')
-    #else:
-    #    categorical_cols = categorical_features
+        vprint('  ➡️ No NaN values in numeric columns to replace.')
 
     # Replace NaN in categorical columns with the mode (only if NaN exists)
     if categorical_features:
-        categorical_cols_with_nan = processed_data[categorical_features].columns[processed_data[categorical_features].isna().any()]
+        categorical_cols_with_nan = processed_data[categorical_features].columns[
+            processed_data[categorical_features].isna().any()
+        ]
         if len(categorical_cols_with_nan) > 0:
-            print(f'  ➡️ Replacing NaN in {len(categorical_cols_with_nan)} categorical column(s) with the mode.')
-            processed_data[categorical_cols_with_nan] = processed_data[categorical_cols_with_nan].apply(lambda col: col.fillna(col.mode()[0]))
-            print(f'  ✅ Replaced NaN values in categorical columns.')
+            vprint(f'  ➡️ Replacing NaN in {len(categorical_cols_with_nan)} categorical column(s) with the mode.')
+            processed_data[categorical_cols_with_nan] = processed_data[categorical_cols_with_nan].apply(
+                lambda col: col.fillna(col.mode()[0])
+            )
+            vprint('  ✅ Replaced NaN values in categorical columns.')
         else:
-            print('  ➡️ No NaN values in categorical columns to replace.')
+            vprint('  ➡️ No NaN values in categorical columns to replace.')
 
     ### One-hot encode categorical features
-    print("- One-hot encoding categorical features:")
+    vprint("- One-hot encoding categorical features:")
     if categorical_features:
-        print(f'  ➡️ One-hot encoding {len(categorical_features)} specified categorical column(s).')
+        vprint(f'  ➡️ One-hot encoding {len(categorical_features)} specified categorical column(s).')
         processed_data = pd.get_dummies(processed_data, columns=categorical_features)
         step6_shape = processed_data.shape
-        print(f'  ✅ One-hot encoding completed. New shape: {step6_shape}')
+        vprint(f'  ✅ One-hot encoding completed. New shape: {step6_shape}')
     else:
-        print(f'  ➡️ No categorical column(s) found.')
-        print(f'  ✅ No One-hot encoding.')
+        vprint('  ➡️ No categorical column(s) found.')
+        vprint('  ✅ No One-hot encoding.')
 
     ### End of data processing
     end_time = time.time()
-    elapsed_time = format_elapsed_time(start_time, end_time)
     final_shape = processed_data.shape
-    print(f'\n✅ Data processing completed. Final shape: {final_shape}')
-    print(f'⏱️ Total processing time: {elapsed_time}.')
-    print("="*90 + "\n")
+    vprint(f'\n✅ Data processing completed. Final shape: {final_shape}')
+    # assumes format_elapsed_time is defined elsewhere
+    if 'format_elapsed_time' in globals():
+        elapsed_time = format_elapsed_time(start_time, end_time)
+        vprint(f'⏱️ Total processing time: {elapsed_time}.')
+    else:
+        vprint(f'⏱️ Total processing time (s): {end_time - start_time:.2f}')
+    vprint("="*90 + "\n")
 
     if single_frame:
         return processed_data
@@ -265,6 +274,7 @@ def data_processing(data: pd.DataFrame, target: str, features_to_drop: list=None
         X = processed_data.drop(target, axis=1)
         y = processed_data[target]
         return X, y
+
 
 
 def data_loading(wp, features_folder):

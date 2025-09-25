@@ -534,7 +534,8 @@ elif tab_selection == "Dashboard":
                         data=data_interp,
                         target=target_var,
                         features_to_drop=features_to_drop,
-                        categorical_features=categorical_features
+                        categorical_features=categorical_features,
+                        verbose=False
                     )
                     X = processed_data.drop(columns=[target_var])
                     y = processed_data[target_var]
