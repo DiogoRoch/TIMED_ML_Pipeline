@@ -326,7 +326,7 @@ elif tab_selection == "Dashboard":
             with c4:
                 best_val = best_row.get(metric_col, None)
                 best_str = f"{best_val:,.4f}" if isinstance(best_val, (int, float, np.floating)) else str(best_val)
-                st.metric(f"Validation {metric_label}", best_str)
+                st.metric(f"Best Model Test {metric_label}", best_str)
 
             # Best model card
             with st.expander("🏆 Best model details", expanded=True):
