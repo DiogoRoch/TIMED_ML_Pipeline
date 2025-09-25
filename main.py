@@ -581,8 +581,101 @@ elif tab_selection == "Dashboard":
                             data=shap_values.data,
                             feature_names=[rename_dict.get(f, f) for f in X_test.columns]
                         )
+                        pretty_feature_names = [rename_dict.get(f, f) for f in X_test.columns]
                     else:
                         shap_explanation = shap_values
+                        pretty_feature_names = list(X_test.columns)
+                    
+                    # ---------- Bulk export button ----------
+                    st.divider()
+                    st.write("### Bulk export")
+                    st.caption("Generate residuals, SHAP summary, and all SHAP scatter plots as a ZIP.")
+
+                    export_zip_btn = st.button("🎁 Generate all plots & download ZIP")
+
+                    if export_zip_btn:
+                        import zipfile
+                        import re
+
+                        status = st.empty()
+                        prog = st.progress(0)
+
+                        def sanitize_filename(s: str) -> str:
+                            s = str(s)
+                            s = re.sub(r"[^\w\-. ]", "_", s)  # keep alnum, underscore, dash, dot, space
+                            return s.strip().replace(" ", "_")
+
+                        total_items = 2 + X_test.shape[1]  # residuals + summary + all scatters
+                        done = 0
+
+                        zip_buffer = io.BytesIO()
+                        with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                            # 1) Residuals plot
+                            status.text("Rendering residuals plot…")
+                            y_pred = model.predict(X_test)
+                            residuals = y_test - y_pred
+
+                            fig_res, ax = plt.subplots()
+                            ax.scatter(y_pred, residuals, alpha=0.5)
+                            ax.axhline(0, color='red', linestyle='--')
+                            ax.set_xlabel("Predicted Values")
+                            ax.set_ylabel("Residuals")
+                            ax.set_title(f"Residuals vs Predicted — {os.path.basename(selected_model_file)}")
+                            buf_res = io.BytesIO()
+                            fig_res.savefig(buf_res, format="png", dpi=200, bbox_inches="tight")
+                            plt.close(fig_res)
+                            buf_res.seek(0)
+                            zf.writestr("01_residuals.png", buf_res.read())
+                            done += 1
+                            prog.progress(done / total_items)
+
+                            # 2) SHAP summary (beeswarm)
+                            status.text("Rendering SHAP summary plot…")
+                            plt.figure()
+                            if rename_dict:
+                                shap.summary_plot(shap_explanation, show=False)
+                            else:
+                                shap.summary_plot(shap_values, X_test, show=False)
+                            fig_sum = plt.gcf()
+                            buf_sum = io.BytesIO()
+                            fig_sum.savefig(buf_sum, format="png", dpi=200, bbox_inches="tight")
+                            plt.close(fig_sum)
+                            buf_sum.seek(0)
+                            zf.writestr("02_shap_summary.png", buf_sum.read())
+                            done += 1
+                            prog.progress(done / total_items)
+
+                            # 3) All SHAP scatter plots (one per feature)
+                            for idx, (col, pretty) in enumerate(zip(X_test.columns, pretty_feature_names), start=1):
+                                status.text(f"Rendering SHAP scatter for feature {idx}/{len(pretty_feature_names)}: {pretty}")
+                                fig_sc, ax = plt.subplots()
+                                # Note: we use shap_values for data; labels/titles use pretty names
+                                shap.plots.scatter(shap_values[:, X_test.columns.get_loc(col)], ax=ax, show=False)
+                                ax.set_title(f"SHAP scatter — {pretty}")
+                                ax.set_xlabel(f"{pretty} value")
+                                ax.set_ylabel(f"SHAP value for {pretty}")
+                                buf_sc = io.BytesIO()
+                                fig_sc.savefig(buf_sc, format="png", dpi=170, bbox_inches="tight")
+                                plt.close(fig_sc)
+                                buf_sc.seek(0)
+                                zf.writestr(
+                                    f"scatters/feature_{idx:03d}_{sanitize_filename(pretty)}.png",
+                                    buf_sc.read()
+                                )
+                                done += 1
+                                prog.progress(done / total_items)
+
+                        zip_buffer.seek(0)
+                        status.success("All plots generated.")
+                        prog.empty()
+
+                        st.download_button(
+                            "⬇️ Download plots (ZIP)",
+                            data=zip_buffer.getvalue(),
+                            file_name=f"{selected_exp}_{os.path.basename(selected_model_file).replace('.joblib','')}_plots.zip",
+                            mime="application/zip",
+                        )
+                        st.caption("ZIP contains: residuals.png, shap_summary.png, and one scatter per feature in /scatters.")
 
                     # Tabs for:
                     # - Residuals plot
