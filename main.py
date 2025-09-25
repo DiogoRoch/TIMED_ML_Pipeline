@@ -29,6 +29,7 @@ st.set_page_config(layout="wide")
 # Define directories
 current_dir = os.path.dirname(__file__)
 data_dir = os.path.join(current_dir, 'data')
+dicts_dir = os.path.join(current_dir, 'dicts')
 output_dir = os.path.join(current_dir, 'output')
 
 # Initizalize session state for dataframe
@@ -512,6 +513,22 @@ elif tab_selection == "Dashboard":
                     import matplotlib.pyplot as plt
                     from sklearn.model_selection import train_test_split
 
+                    # Get existing rename dictionaries from the dicts folder
+                    rename_dict_files = sorted(glob.glob(os.path.join(dicts_dir, "*.json")))
+                    # Select a dictionary to rename the data features to more readable names
+                    selected_rename_dict = st.selectbox(
+                        "Select a feature renaming dictionary (optional)",
+                        options=[""] + rename_dict_files,
+                        format_func=lambda x: os.path.basename(x),
+                        index=0,
+                    )
+
+                    rename_dict = {}
+                    if selected_rename_dict:
+                        with open(selected_rename_dict, "r", encoding="utf-8") as rdf:
+                            rename_dict = json.load(rdf)
+                        st.write(f"Loaded renaming dictionary: `{os.path.basename(selected_rename_dict)}`")
+
                     # Load metadata from JSON file
                     metadata_file = os.path.join(exp_path, f"metadata_{selected_exp}.json")
                     if not os.path.exists(metadata_file):
@@ -556,6 +573,16 @@ elif tab_selection == "Dashboard":
                     # Compute SHAP values
                     explainer = shap.TreeExplainer(model[model_type])
                     shap_values = explainer(X_test)
+                    # Get SHAP explanation with better names if rename_dict is provided
+                    if rename_dict:
+                        shap_explanation = shap.Explanation(
+                            values=shap_values.values,
+                            base_values=shap_values.base_values,
+                            data=shap_values.data,
+                            feature_names=[rename_dict.get(f, f) for f in X_test.columns]
+                        )
+                    else:
+                        shap_explanation = shap_values
 
                     # Tabs for:
                     # - Residuals plot
@@ -565,7 +592,7 @@ elif tab_selection == "Dashboard":
 
                     # Model residuals plot
                     with tab1:
-                        st.write("### Residuals Plot")
+                        st.write(f"### Residuals Plot - **{target_var}** — Model type: **{model_type}**")
                         y_pred = model.predict(X_test)
                         residuals = y_test - y_pred
                         
@@ -580,10 +607,13 @@ elif tab_selection == "Dashboard":
                     
                     # Shap summary plot
                     with tab2:
-                        st.write(f"### SHAP Summary Plot — Model type: **{model_type}**")
+                        st.write(f"### SHAP Summary Plot — **{target_var}** — Model type: **{model_type}**")
 
                         fig_shap, ax = plt.subplots()
-                        shap.summary_plot(shap_values, X_test, show=False)
+                        if rename_dict:
+                            shap.summary_plot(shap_explanation, show=False)
+                        else:
+                            shap.summary_plot(shap_values, X_test, show=False)
                         st.pyplot(fig_shap, clear_figure=True)
                         plt.close(fig_shap)
                     
@@ -595,11 +625,16 @@ elif tab_selection == "Dashboard":
                             index=0,
                         )
                         if selected_feature:
-                            st.write(f"### SHAP Scatter Plot for feature: **{selected_feature}**")
+                            st.write(f"### SHAP Scatter Plot for feature: **{selected_feature}** — Predicting: **{target_var}** — Model type: **{model_type}**")
                             feature_loc = X_test.columns.get_loc(selected_feature)
                             
                             fig_scatter, ax = plt.subplots()
                             shap.plots.scatter(shap_values[:, feature_loc], ax=ax, show=False)
+                            if rename_dict and selected_feature in rename_dict:
+                                ax.set_title(f"SHAP Scatter Plot for feature: {rename_dict[selected_feature]}")
+                                plt.ylabel(f"SHAP value for {rename_dict[selected_feature]}")
+                                plt.xlabel(f"{rename_dict[selected_feature]} value")
+
                             st.pyplot(fig_scatter, clear_figure=True)
                             plt.close(fig_scatter)
 
